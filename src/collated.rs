@@ -1,22 +1,22 @@
 //! Collated CIGAR operations.
-//! 
+//!
 //! This module provides a collated iterator over augmented CIGAR elements, allowing for
 //! efficient processing and analysis of CIGAR strings across multiple alignments.
-//! 
+//!
 //! # Example: Collating CIGAR Strings
 //!
 //! ```rust
 //! use cigar_utils::collated::CollatedAugmentedCigarIterator;
-//! 
+//!
 //! // Example input: a vector of CIGAR strings and their starting reference positions
 //! let cigars = vec![
-//!     ("2M1I", 100),
-//!     ("1D2M", 102),
+//!     std::io::Result::Ok(("2M1I", 100)),
+//!     std::io::Result::Ok(("1D2M", 102)),
 //! ];
-//! 
+//!
 //! // Create the collated iterator
 //! let mut collated = CollatedAugmentedCigarIterator::new(cigars.into_iter());
-//! 
+//!
 //! // Iterate and print collated augmented CIGAR elements
 //! while let Some(Ok((elem, count))) = collated.next() {
 //!     println!(
@@ -34,12 +34,21 @@ use crate::augmented_cigar::{AugmentedCigarElement, AugmentedCigarIterator};
 use crate::error::CigarError;
 
 /// A collated iterator over augmented CIGAR elements.
-pub struct CollatedAugmentedCigarIterator<'a, Source: Iterator<Item = (&'a str, u32)>> {
+pub struct CollatedAugmentedCigarIterator<
+    'a,
+    Source: Iterator<Item = std::result::Result<(&'a str, u32), E>>,
+    E: std::error::Error + Send + Sync + 'static,
+> {
     source: Peekable<Source>,
     queue: BinaryHeap<Reverse<AugmentedCigarElement>>,
 }
 
-impl<'a, Source: Iterator<Item = (&'a str, u32)>> CollatedAugmentedCigarIterator<'a, Source> {
+impl<
+    'a,
+    Source: Iterator<Item = std::result::Result<(&'a str, u32), E>>,
+    E: std::error::Error + Send + Sync + 'static,
+> CollatedAugmentedCigarIterator<'a, Source, E>
+{
     /// Create a new collated augmented CIGAR iterator.
     pub fn new(source: Source) -> Self {
         let source = source.peekable();
@@ -48,15 +57,26 @@ impl<'a, Source: Iterator<Item = (&'a str, u32)>> CollatedAugmentedCigarIterator
     }
 }
 
-impl<'a, Source: Iterator<Item = (&'a str, u32)>> Iterator
-    for CollatedAugmentedCigarIterator<'a, Source>
+impl<
+    'a,
+    Source: Iterator<Item = std::result::Result<(&'a str, u32), E>>,
+    E: std::error::Error + Send + Sync + 'static,
+> Iterator for CollatedAugmentedCigarIterator<'a, Source, E>
 {
     type Item = std::result::Result<(AugmentedCigarElement, usize), CigarError>;
 
     fn next(&mut self) -> Option<Self::Item> {
         while let Some(item) = self.source.peek() {
+            let item = match item {
+                Ok(ord) => ord,
+                Err(_) => {
+                    let e = self.source.next().unwrap().unwrap_err();
+                    return Some(Err(CigarError::External(Box::new(e))));
+                }
+            };
             let (cigar_str, reference_position) = item;
-            let mut augmented_iter = AugmentedCigarIterator::from((*cigar_str, *reference_position)).peekable();
+            let mut augmented_iter =
+                AugmentedCigarIterator::from((*cigar_str, *reference_position)).peekable();
             if let Some(Ok(elem)) = augmented_iter.peek() {
                 if let Some(Reverse(existing)) = self.queue.peek() {
                     if elem > existing {
@@ -98,7 +118,10 @@ mod tests {
 
     #[test]
     fn test_collated_augmented_cigar_iterator_basic() {
-        let cigars = vec![("2M1I", 100), ("1D2M", 102)];
+        let cigars = vec![
+            std::io::Result::Ok(("2M1I", 100)),
+            std::io::Result::Ok(("1D2M", 102)),
+        ];
         let mut collated = CollatedAugmentedCigarIterator::new(cigars.into_iter());
         let mut results = Vec::new();
         while let Some(Ok((elem, count))) = collated.next() {
@@ -121,8 +144,8 @@ mod tests {
     #[test]
     fn test_collated_augmented_cigar_iterator_error() {
         let cigars = vec![
-            ("2M1Z", 100), // Invalid op 'Z'
-            ("1M", 101),
+            std::io::Result::Ok(("2M1Z", 100)), // Invalid op 'Z'
+            std::io::Result::Ok(("1M", 101)),
         ];
         let mut collated = CollatedAugmentedCigarIterator::new(cigars.into_iter());
         let mut saw_error = false;
@@ -141,7 +164,11 @@ mod tests {
 
     #[test]
     fn test_collated_augmented_cigar_iterator_multiple_same_position() {
-        let cigars = vec![("1M", 100), ("1M", 100), ("1M", 100)];
+        let cigars = vec![
+            std::io::Result::Ok(("1M", 100)),
+            std::io::Result::Ok(("1M", 100)),
+            std::io::Result::Ok(("1M", 100)),
+        ];
         let mut collated = CollatedAugmentedCigarIterator::new(cigars.into_iter());
         let mut results = Vec::new();
         while let Some(Ok((elem, count))) = collated.next() {
