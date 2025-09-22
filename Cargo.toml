@@ -1,0 +1,7 @@
+[package]
+name = "cigar-utils"
+version = "0.1.0"
+description = "A collection of utilities for working with CIGAR strings in bioinformatics."
+edition = "2024"
+
+[dependencies]
