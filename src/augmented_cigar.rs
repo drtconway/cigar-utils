@@ -1,7 +1,7 @@
 //! Augmented CIGAR operations.
-//! 
+//!
 //! Augmented CIGAR operations provide additional context to the standard CIGAR operations by including read and reference positions.
-//! 
+//!
 //! This module also provides iterators over sequences of them derived from an alignment position and a cigar string.
 
 use crate::error::CigarError;
@@ -16,16 +16,21 @@ pub struct AugmentedCigarElement {
     pub op: CigarOp,
     /// The read position of the CIGAR operation.
     pub read_position: u32,
+    /// The chromosome ID for the reference position.
+    pub chrom_id: u32,
     /// The reference position of the CIGAR operation.
     pub reference_position: u32,
 }
 
 impl Ord for AugmentedCigarElement {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        match self.reference_position.cmp(&other.reference_position) {
+        match self.chrom_id.cmp(&other.chrom_id) {
             std::cmp::Ordering::Equal => {
-                match self.op.cmp(&other.op) {
-                    std::cmp::Ordering::Equal => self.length.cmp(&other.length),
+                match self.reference_position.cmp(&other.reference_position) {
+                    std::cmp::Ordering::Equal => match self.op.cmp(&other.op) {
+                        std::cmp::Ordering::Equal => self.length.cmp(&other.length),
+                        ord => ord,
+                    },
                     ord => ord,
                 }
             }
@@ -42,31 +47,34 @@ impl PartialOrd for AugmentedCigarElement {
 
 /// An iterator over augmented CIGAR elements.
 pub struct AugmentedCigarIterator<'a> {
-    pub(crate) inner: CigarIterator<'a>,
-    pub(crate) read_position: u32,
-    pub(crate) reference_position: u32,
+    inner: CigarIterator<'a>,
+    read_position: u32,
+    chrom_id: u32,
+    reference_position: u32,
 }
 
-impl<'a> From<(CigarIterator<'a>, u32)> for AugmentedCigarIterator<'a> {
-    fn from(value: (CigarIterator<'a>, u32)) -> Self {
-        let (inner, reference_position) = value;
+impl<'a> From<(CigarIterator<'a>, u32, u32)> for AugmentedCigarIterator<'a> {
+    fn from(value: (CigarIterator<'a>, u32, u32)) -> Self {
+        let (inner, chrom_id, reference_position) = value;
         AugmentedCigarIterator {
             inner,
             read_position: 0,
+            chrom_id,
             reference_position,
         }
     }
 }
 
-impl<'a> From<(&'a str, u32)> for AugmentedCigarIterator<'a> {
-    fn from(value: (&'a str, u32)) -> Self {
-        let (cigar_str, reference_position) = value;
+impl<'a> From<(&'a str, u32, u32)> for AugmentedCigarIterator<'a> {
+    fn from(value: (&'a str, u32, u32)) -> Self {
+        let (cigar_str, chrom_id, reference_position) = value;
         let inner = CigarIterator {
             chars: cigar_str.chars(),
         };
         AugmentedCigarIterator {
             inner,
             read_position: 0,
+            chrom_id,
             reference_position,
         }
     }
@@ -85,6 +93,7 @@ impl<'a> Iterator for AugmentedCigarIterator<'a> {
                     length,
                     op,
                     read_position,
+                    chrom_id: self.chrom_id,
                     reference_position,
                 };
                 match op {
@@ -137,6 +146,7 @@ mod tests {
             CigarIterator {
                 chars: cigar.chars(),
             },
+            1,
             100,
         ));
         let elems: Vec<_> = iter.collect();
@@ -159,6 +169,7 @@ mod tests {
             CigarIterator {
                 chars: cigar.chars(),
             },
+            1,
             50,
         ));
         let elems: Vec<_> = iter.collect();
@@ -180,6 +191,7 @@ mod tests {
             CigarIterator {
                 chars: cigar.chars(),
             },
+            1,
             0,
         ));
         let elems: Vec<_> = iter.collect();
@@ -191,7 +203,7 @@ mod tests {
     #[test]
     fn test_augmented_cigar_iterator_from_str() {
         let cigar = "1M2I";
-        let iter = AugmentedCigarIterator::from((cigar, 10));
+        let iter = AugmentedCigarIterator::from((cigar, 1, 10));
         let elems: Vec<_> = iter.collect();
         assert_eq!(elems.len(), 2);
         assert!(matches!(elems[0], Ok(ref e)
