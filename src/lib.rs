@@ -9,6 +9,7 @@
 
 #![deny(missing_docs)]
 
+use std::convert::TryFrom;
 use std::fmt::Display;
 
 pub mod augmented_cigar;
@@ -53,6 +54,41 @@ impl Display for CigarOp {
             CigarOp::Diff => 'X',
         };
         write!(f, "{}", c)
+    }
+}
+
+impl From<CigarOp> for u8 {
+    fn from(op: CigarOp) -> u8 {
+        match op {
+            CigarOp::Match => 0,
+            CigarOp::Insertion => 1,
+            CigarOp::Deletion => 2,
+            CigarOp::Skip => 3,
+            CigarOp::SoftClip => 4,
+            CigarOp::HardClip => 5,
+            CigarOp::Padding => 6,
+            CigarOp::Equal => 7,
+            CigarOp::Diff => 8,
+        }
+    }
+}
+
+impl TryFrom<u8> for CigarOp {
+    type Error = u8;
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        match value {
+            0 => Ok(CigarOp::Match),
+            1 => Ok(CigarOp::Insertion),
+            2 => Ok(CigarOp::Deletion),
+            3 => Ok(CigarOp::Skip),
+            4 => Ok(CigarOp::SoftClip),
+            5 => Ok(CigarOp::HardClip),
+            6 => Ok(CigarOp::Padding),
+            7 => Ok(CigarOp::Equal),
+            8 => Ok(CigarOp::Diff),
+            _ => Err(value),
+        }
     }
 }
 
