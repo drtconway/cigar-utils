@@ -10,8 +10,8 @@
 //!
 //! // Example input: a vector of CIGAR strings and their starting reference positions
 //! let cigars = vec![
-//!     std::io::Result::Ok(("2M1I", 100)),
-//!     std::io::Result::Ok(("1D2M", 102)),
+//!     std::io::Result::Ok(("2M1I".to_string(), 100)),
+//!     std::io::Result::Ok(("1D2M".to_string(), 102)),
 //! ];
 //!
 //! // Create the collated iterator
@@ -35,8 +35,7 @@ use crate::error::CigarError;
 
 /// A collated iterator over augmented CIGAR elements.
 pub struct CollatedAugmentedCigarIterator<
-    'a,
-    Source: Iterator<Item = std::result::Result<(&'a str, u32), E>>,
+    Source: Iterator<Item = std::result::Result<(String, u32), E>>,
     E: std::error::Error + Send + Sync + 'static,
 > {
     source: Peekable<Source>,
@@ -44,10 +43,9 @@ pub struct CollatedAugmentedCigarIterator<
 }
 
 impl<
-    'a,
-    Source: Iterator<Item = std::result::Result<(&'a str, u32), E>>,
+    Source: Iterator<Item = std::result::Result<(String, u32), E>>,
     E: std::error::Error + Send + Sync + 'static,
-> CollatedAugmentedCigarIterator<'a, Source, E>
+> CollatedAugmentedCigarIterator<Source, E>
 {
     /// Create a new collated augmented CIGAR iterator.
     pub fn new(source: Source) -> Self {
@@ -58,10 +56,9 @@ impl<
 }
 
 impl<
-    'a,
-    Source: Iterator<Item = std::result::Result<(&'a str, u32), E>>,
+    Source: Iterator<Item = std::result::Result<(String, u32), E>>,
     E: std::error::Error + Send + Sync + 'static,
-> Iterator for CollatedAugmentedCigarIterator<'a, Source, E>
+> Iterator for CollatedAugmentedCigarIterator<Source, E>
 {
     type Item = std::result::Result<(AugmentedCigarElement, usize), CigarError>;
 
@@ -76,7 +73,7 @@ impl<
             };
             let (cigar_str, reference_position) = item;
             let mut augmented_iter =
-                AugmentedCigarIterator::from((*cigar_str, *reference_position)).peekable();
+                AugmentedCigarIterator::from((cigar_str as &str, *reference_position)).peekable();
             if let Some(Ok(elem)) = augmented_iter.peek() {
                 if let Some(Reverse(existing)) = self.queue.peek() {
                     if elem > existing {
@@ -84,13 +81,13 @@ impl<
                     }
                 }
             }
-            self.source.next();
             for elem in augmented_iter {
                 match elem {
                     Ok(e) => self.queue.push(Reverse(e)),
                     Err(e) => return Some(Err(e)),
                 }
             }
+            self.source.next();
         }
         if let Some(Reverse(elem)) = self.queue.pop() {
             let mut count = 1;
@@ -119,8 +116,8 @@ mod tests {
     #[test]
     fn test_collated_augmented_cigar_iterator_basic() {
         let cigars = vec![
-            std::io::Result::Ok(("2M1I", 100)),
-            std::io::Result::Ok(("1D2M", 102)),
+            std::io::Result::Ok(("2M1I".to_string(), 100)),
+            std::io::Result::Ok(("1D2M".to_string(), 102)),
         ];
         let mut collated = CollatedAugmentedCigarIterator::new(cigars.into_iter());
         let mut results = Vec::new();
@@ -144,8 +141,8 @@ mod tests {
     #[test]
     fn test_collated_augmented_cigar_iterator_error() {
         let cigars = vec![
-            std::io::Result::Ok(("2M1Z", 100)), // Invalid op 'Z'
-            std::io::Result::Ok(("1M", 101)),
+            std::io::Result::Ok(("2M1Z".to_string(), 100)), // Invalid op 'Z'
+            std::io::Result::Ok(("1M".to_string(), 101)),
         ];
         let mut collated = CollatedAugmentedCigarIterator::new(cigars.into_iter());
         let mut saw_error = false;
@@ -165,9 +162,9 @@ mod tests {
     #[test]
     fn test_collated_augmented_cigar_iterator_multiple_same_position() {
         let cigars = vec![
-            std::io::Result::Ok(("1M", 100)),
-            std::io::Result::Ok(("1M", 100)),
-            std::io::Result::Ok(("1M", 100)),
+            std::io::Result::Ok(("1M".to_string(), 100)),
+            std::io::Result::Ok(("1M".to_string(), 100)),
+            std::io::Result::Ok(("1M".to_string(), 100)),
         ];
         let mut collated = CollatedAugmentedCigarIterator::new(cigars.into_iter());
         let mut results = Vec::new();
