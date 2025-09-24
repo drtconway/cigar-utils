@@ -96,7 +96,11 @@ impl<
         if let Some(Reverse(elem)) = self.queue.pop() {
             let mut count = 1;
             while let Some(Reverse(next)) = self.queue.peek() {
-                if *next == elem {
+                if next.chrom_id == elem.chrom_id
+                    && next.reference_position == elem.reference_position
+                    && next.op == elem.op
+                    && next.length == elem.length
+                {
                     self.queue.pop();
                     count += 1;
                 } else {
