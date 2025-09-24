@@ -73,10 +73,14 @@ impl<
             };
             let (cigar_str, chrom_id, reference_position) = item;
             let mut augmented_iter =
-                AugmentedCigarIterator::from((cigar_str as &str, *chrom_id, *reference_position)).peekable();
+                AugmentedCigarIterator::from((cigar_str as &str, *chrom_id, *reference_position))
+                    .peekable();
             if let Some(Ok(elem)) = augmented_iter.peek() {
                 if let Some(Reverse(existing)) = self.queue.peek() {
-                    if elem > existing {
+                    if elem.chrom_id > existing.chrom_id
+                        || (elem.chrom_id == existing.chrom_id
+                            && elem.reference_position > existing.reference_position)
+                    {
                         break;
                     }
                 }
@@ -158,46 +162,46 @@ mod tests {
         }
         assert!(saw_error);
     }
-        #[test]
-        fn test_collated_augmented_cigar_iterator_chrom_id_collation() {
-            let cigars = vec![
-                std::io::Result::Ok(("1M".to_string(), 1, 100)),
-                std::io::Result::Ok(("1M".to_string(), 1, 100)),
-                std::io::Result::Ok(("1M".to_string(), 1, 101)),
-                std::io::Result::Ok(("1M".to_string(), 2, 100)),
-                std::io::Result::Ok(("1M".to_string(), 2, 101)),
-            ];
-            let mut collated = CollatedAugmentedCigarIterator::new(cigars.into_iter());
-            let mut results = Vec::new();
-            while let Some(Ok((elem, count))) = collated.next() {
-                results.push((elem.chrom_id, elem.reference_position, count));
-            }
-            // Should have two chrom_id values at each position
-            assert_eq!(results.len(), 4);
-            assert_eq!(results[0], (1, 100, 2));
-            assert_eq!(results[1], (1, 101, 1));
-            assert_eq!(results[2], (2, 100, 1));
-            assert_eq!(results[3], (2, 101, 1));
+    #[test]
+    fn test_collated_augmented_cigar_iterator_chrom_id_collation() {
+        let cigars = vec![
+            std::io::Result::Ok(("1M".to_string(), 1, 100)),
+            std::io::Result::Ok(("1M".to_string(), 1, 100)),
+            std::io::Result::Ok(("1M".to_string(), 1, 101)),
+            std::io::Result::Ok(("1M".to_string(), 2, 100)),
+            std::io::Result::Ok(("1M".to_string(), 2, 101)),
+        ];
+        let mut collated = CollatedAugmentedCigarIterator::new(cigars.into_iter());
+        let mut results = Vec::new();
+        while let Some(Ok((elem, count))) = collated.next() {
+            results.push((elem.chrom_id, elem.reference_position, count));
         }
+        // Should have two chrom_id values at each position
+        assert_eq!(results.len(), 4);
+        assert_eq!(results[0], (1, 100, 2));
+        assert_eq!(results[1], (1, 101, 1));
+        assert_eq!(results[2], (2, 100, 1));
+        assert_eq!(results[3], (2, 101, 1));
+    }
 
-        #[test]
-        fn test_collated_augmented_cigar_iterator_chrom_id_grouping() {
-            let cigars = vec![
-                std::io::Result::Ok(("1M".to_string(), 1, 100)),
-                std::io::Result::Ok(("1M".to_string(), 1, 100)),
-                std::io::Result::Ok(("1M".to_string(), 2, 100)),
-                std::io::Result::Ok(("1M".to_string(), 2, 100)),
-            ];
-            let mut collated = CollatedAugmentedCigarIterator::new(cigars.into_iter());
-            let mut results = Vec::new();
-            while let Some(Ok((elem, count))) = collated.next() {
-                results.push((elem.chrom_id, elem.reference_position, count));
-            }
-            // Should group by chrom_id and reference_position
-            assert_eq!(results.len(), 2);
-            assert_eq!(results[0], (1, 100, 2));
-            assert_eq!(results[1], (2, 100, 2));
+    #[test]
+    fn test_collated_augmented_cigar_iterator_chrom_id_grouping() {
+        let cigars = vec![
+            std::io::Result::Ok(("1M".to_string(), 1, 100)),
+            std::io::Result::Ok(("1M".to_string(), 1, 100)),
+            std::io::Result::Ok(("1M".to_string(), 2, 100)),
+            std::io::Result::Ok(("1M".to_string(), 2, 100)),
+        ];
+        let mut collated = CollatedAugmentedCigarIterator::new(cigars.into_iter());
+        let mut results = Vec::new();
+        while let Some(Ok((elem, count))) = collated.next() {
+            results.push((elem.chrom_id, elem.reference_position, count));
         }
+        // Should group by chrom_id and reference_position
+        assert_eq!(results.len(), 2);
+        assert_eq!(results[0], (1, 100, 2));
+        assert_eq!(results[1], (2, 100, 2));
+    }
     #[test]
     fn test_collated_augmented_cigar_iterator_multiple_same_position() {
         let cigars = vec![
